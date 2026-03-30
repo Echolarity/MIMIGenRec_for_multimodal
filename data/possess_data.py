@@ -283,6 +283,7 @@ def parse_args():
         description="数据处理参数配置",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+
     parser.add_argument('--category', type=str, default='Industrial_and_Scientific',help='商品类别名称')
     parser.add_argument('--sample_size', type=int, default=500,
                        help='小样本商品数量，设置为0或负数时处理全量数据')
@@ -320,9 +321,9 @@ if __name__ == "__main__":
     OUTPUT_PATH =args.output_path
 
     # 原始数据路径配置
-    FILE_REVIEWS = f"/root/sunyuqi/MIMIGenRec/data/{CATEGORY}.jsonl"
-    FILE_META = f"/root/sunyuqi/MIMIGenRec/data/meta_{CATEGORY}.jsonl"
-    IMG_DIR = f"/root/sunyuqi/MIMIGenRec/data/{CATEGORY}_images"
+    FILE_REVIEWS = f"./data/{CATEGORY}.jsonl"
+    FILE_META = f"./data/meta_{CATEGORY}.jsonl"
+    IMG_DIR = f"./data/{CATEGORY}_images"
 
     out_dir = os.path.join(OUTPUT_PATH, CATEGORY)
     check_path(out_dir)
