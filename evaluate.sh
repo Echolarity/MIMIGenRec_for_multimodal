@@ -1,12 +1,31 @@
 set -e
+# ================= 核心参数安全导入与告警机制 =================
+get_env_or_default() {
+    local env_val="$1"        # 传入的环境变量的值
+    local env_name="$2"       # 环境变量的名称 (仅作打印展示)
+    local default_val="$3"    # 如果为空时的默认值
 
-CATEGORY="Industrial_and_Scientific"
+    if [ -z "$env_val" ]; then
+        # 打印告警到标准错误流 (>&2)，确保不会影响变量捕获，同时在终端显示黄色高亮
+        echo -e "\033[33m[Warning] 环境变量 '${env_name}' 为空，使用默认值: ${default_val}\033[0m" >&2
+        echo "$default_val"
+    else
+        echo "$env_val"
+    fi
+}
+# ==============================================================
+# CATEGORY="Industrial_and_Scientific"
 # CATEGORY="Office_Products"
 # CATEGORY="Toys_and_Games"
+CATEGORY=$(get_env_or_default "${CATEGORY:-}" "CATEGORY" "Industrial_and_Scientific")
+# Optimization=${Optimization:-"dsz3"}
+export Optimization=$(get_env_or_default "${Optimization:-}" "Optimization" "dsz3")
+exp_name=$(get_env_or_default "${EVAL_EXP_NAME:-}" "EVAL_EXP_NAME" "newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-${Optimization}")
 
 # sft
-exp_name="newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-dsz2"
+# exp_name="newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-dsz3"
 # exp_name="saves/qwen2.5-1.5b/full/${CATEGORY}-sft-dsz2"
+# exp_name=${EVAL_EXP_NAME:-"newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-${Optimization}"}
 
 # Industrial and Scientific rl
 # exp_name="rl_outputs/${CATEGORY}-qwen2.5-0.5b-instruct-grpo/checkpoint-1648"
@@ -22,8 +41,8 @@ exp_name="newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-dsz2"
 # multi-GPU config
 # cuda_list="0 1 2 3 4 5 6 7"  # 8 GPUs
 # cuda_list="0"                    # single GPU
-cuda_list="0 1 2 3"
-
+# cuda_list=${EVAL_CUDA_LIST:-"0 4 5"}
+cuda_list=$(get_env_or_default "${EVAL_CUDA_LIST:-}" "EVAL_CUDA_LIST" "0 4 5")
 # Test data path
 test_data_path="data/${CATEGORY}/sft/test.json"
 

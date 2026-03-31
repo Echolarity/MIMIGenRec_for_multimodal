@@ -5,7 +5,7 @@ SCRIPT_NAME=$(basename "$0")
 TASK_PID_FILE="task.pid"
 PROCESS_GROUP_FILE="process_group.id"
 # 全局默认任务脚本
-DEFAULT_TASK_SCRIPT="sft.sh"
+DEFAULT_TASK_SCRIPT="main.sh"
 
 show_usage() {
     echo "任务管理器"

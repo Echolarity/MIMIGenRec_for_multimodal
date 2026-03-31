@@ -89,63 +89,92 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator)
     if processor.tokenizer.pad_token is None:
         processor.tokenizer.pad_token = processor.tokenizer.eos_token
 
+    # 🔥 抽取局部前向推理函数，方便在 concat 模式下调用两次
+    def _get_embeddings(messages, images):
+        text_prompts = [
+            processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=False)
+            for msg in messages
+        ]
+        batch_inputs = processor(
+            text=text_prompts,
+            images=images if images else None,
+            padding=True,
+            return_tensors="pt"
+        ).to(accelerator.device)
+
+        outputs = model(**batch_inputs, output_hidden_states=True)
+        last_hidden = outputs.hidden_states[-1] 
+        attention_mask = batch_inputs.attention_mask
+        mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
+        
+        sum_embeddings = torch.sum(last_hidden * mask_expanded, dim=1)
+        sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
+        return (sum_embeddings / sum_mask).to(torch.float32).cpu().numpy()
+
     with torch.no_grad():
         for i in range(0, len(local_texts), batch_size):
             batch_ids = local_ids[i : i + batch_size]
             batch_texts = local_texts[i : i + batch_size]
             batch_img_paths = local_img_paths[i : i + batch_size]
 
-            multi_messages_list = []
-            pil_images_list = []
+            multi_msgs, multi_imgs = [], []
+            text_msgs = []
+            img_msgs, img_only_imgs = [], []
 
             for txt, img_path in zip(batch_texts, batch_img_paths):
-                content = []
+                safe_txt = txt[:1500] 
+                
+                # 图片加载逻辑
+                img_obj, has_img = None, False
                 if img_path:
                     try:
-                        img = Image.open(img_path).convert("RGB")
-                        
-                        # 🔥 修复关键1：强制压缩物理图片分辨率！
-                        # thumbnail 会保持原比例，将其最大边长限制为 448 像素。
-                        # 这会将图片的 Token 数量从 ~1800 暴降至 ~200，既保留了语义，又省出极多显存！
-                        img.thumbnail((384, 384), Image.Resampling.LANCZOS)
-                        
-                        content.append({"type": "image"})
-                        pil_images_list.append(img)
+                        img_obj = Image.open(img_path).convert("RGB")
+                        img_obj.thumbnail((384, 384), Image.Resampling.LANCZOS)
+                        has_img = True
                     except Exception as e:
-                        print(f"图像加载失败: {e}")
+                        pass
                 
-                # 🔥 修复关键2：人工预截断文本字符
-                # 避免超长商品描述（2000字符大约等于500预估Token）
-                safe_txt = txt[:1500] 
-                content.append({"type": "text", "text": safe_txt})
-                multi_messages_list.append([{"role": "user", "content": content}])
+                # 🔥 根据需求分装内容
+                if args.mode == "multimodal":
+                    content = []
+                    if has_img:
+                        content.append({"type": "image"})
+                        multi_imgs.append(img_obj)
+                    content.append({"type": "text", "text": safe_txt})
+                    multi_msgs.append([{"role": "user", "content": content}])
 
-            text_prompts = [
-                processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=False)
-                for msg in multi_messages_list
-            ]
+                elif args.mode == "text_only":
+                    multi_msgs.append([{"role": "user", "content": [{"type": "text", "text": safe_txt}]}])
 
-            # 🔥 修复关键3：关闭这里的 truncation，因为我们在前面已经把图片和文本都安全压缩了！
-            batch_inputs = processor(
-                text=text_prompts,
-                images=pil_images_list if pil_images_list else None,
-                padding=True,
-                return_tensors="pt"
-            ).to(accelerator.device)
+                elif args.mode == "image_only":
+                    content = []
+                    if has_img:
+                        content.append({"type": "image"})
+                        multi_imgs.append(img_obj)
+                    else:
+                        content.append({"type": "text", "text": " "}) # 无图片时用空格占位防报错
+                    multi_msgs.append([{"role": "user", "content": content}])
+                
+                elif args.mode == "concat":
+                    # 1. 设置文本部分
+                    text_msgs.append([{"role": "user", "content": [{"type": "text", "text": safe_txt}]}])
+                    # 2. 设置图片部分
+                    content_img = []
+                    if has_img:
+                        content_img.append({"type": "image"})
+                        img_only_imgs.append(img_obj)
+                    else:
+                        content_img.append({"type": "text", "text": " "})
+                    img_msgs.append([{"role": "user", "content": content_img}])
 
-            # 提取最后一层隐藏状态
-            outputs = model(**batch_inputs, output_hidden_states=True)
-            last_hidden = outputs.hidden_states[-1] 
-            
-            # Mean Pooling
-            attention_mask = batch_inputs.attention_mask
-            mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden.size()).float()
-            
-            sum_embeddings = torch.sum(last_hidden * mask_expanded, dim=1)
-            sum_mask = torch.clamp(mask_expanded.sum(dim=1), min=1e-9)
-            
-            mean_output = sum_embeddings / sum_mask  
-            mean_output = mean_output.to(torch.float32).cpu().numpy()
+            # 🔥 根据模式推断
+            if args.mode in ["multimodal", "text_only", "image_only"]:
+                mean_output = _get_embeddings(multi_msgs, multi_imgs)
+            elif args.mode == "concat":
+                # 分开推两遍然后直接按维度拼接
+                emb_text = _get_embeddings(text_msgs, [])
+                emb_img = _get_embeddings(img_msgs, img_only_imgs)
+                mean_output = np.concatenate([emb_text, emb_img], axis=1) # shape: (batch_size, hidden_dim * 2)
 
             for idx, emb in zip(batch_ids, mean_output):
                 local_results.append((idx, emb))
@@ -163,10 +192,11 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator)
         final_embeddings = np.stack([x[1] for x in all_results_flat], axis=0)
         
         print("Final Embeddings shape: ", final_embeddings.shape)
-        file_name = f"{args.dataset}.emb-{args.plm_name}-multimodal.npy"
+        # 根据实际 mode 命名文件
+        file_name = f"{args.dataset}.emb-{args.plm_name}-{args.mode}.npy"
         file_path = os.path.join(args.root, file_name)
         np.save(file_path, final_embeddings)
-        print(f"✅ 多模态特征已成功保存至: {file_path}")
+        print(f"✅ 特征已成功保存至: {file_path}")
 
 # ----------------- 模型与环境初始化 -----------------
 def load_qwen_vl_model(model_path, accelerator):
@@ -190,7 +220,14 @@ def parse_args():
     parser.add_argument("--root", type=str, default="./processed_data")
     parser.add_argument("--plm_name", type=str, default="Qwen3VL")
     parser.add_argument("--plm_checkpoint", type=str, default="/root/sunyuqi/models/Qwen3-VL-8B-Instruct")
-    # max_sent_len 不需要了，但保留用于接口兼容
+    # 🔥 添加实验模式控制参数
+    parser.add_argument(
+        "--mode", 
+        type=str, 
+        default="multimodal", 
+        choices=["multimodal", "text_only", "image_only", "concat"],
+        help="特征提取模式"
+    )
     parser.add_argument("--max_sent_len", type=int, default=1024)
     parser.add_argument("--batch_size", type=int, default=4, help="推荐2或4")
     return parser.parse_args()
