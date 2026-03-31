@@ -200,3 +200,5 @@ data/processed_data
 data_0*/
 newdata/*
 newdata/
+.npy
+*.npy
