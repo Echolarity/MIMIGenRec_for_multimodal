@@ -41,7 +41,7 @@ om_cache/
 llamaboard_cache/
 .history/
 temp/
-
+logs/
 # 实验输出 / 日志 / 结果文件（自动生成，忽略）
 saves/
 newsaves/
@@ -69,7 +69,7 @@ predictions_score.json
 *.pt
 *.npy
 .npy
-
+.log
 # ==============================================
 # 3. data/ 目录：【只忽略大文件，保留核心配置】
 # （你的项目必须保留 data/ 目录，不能全忽略！）

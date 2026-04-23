@@ -1,0 +1,1 @@
+ nohup bash scripts/rec_zoo/train_sasrec.sh --data_dir data/Amazon/Industrial_and_Scientific > "log_$(date +%Y%m%d_%H%M%S).log" 2>&1 &

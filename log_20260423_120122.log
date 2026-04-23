@@ -1,0 +1,135 @@
+/root/miniconda3/envs/mimi/lib/python3.12/site-packages/torch/cuda/__init__.py:65: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+============================================================
+--- 1. Training Parameters ---
+  data_dir: data/Industrial_and_Scientific
+  split: sft
+  seq_size: 10
+  epoch: 500
+  batch_size: 1024
+  hidden_factor: 32
+  lr: 0.001
+  l2_decay: 1e-05
+  dropout_rate: 0.3
+  loss_type: bce
+  model: SASRec
+  num_filters: 16
+  filter_sizes: [2,3,4]
+  early_stop: 20
+  eval_num: 1
+  seed: 1
+  cuda: 0
+  save_dir: experiments/SASRec_Industrial_and_Scientific
+  result_json: experiments/SASRec_Industrial_and_Scientific/result.json
+  num_workers: 8
+
+--- 2. Dataset Statistics ---
+  item_num : 1204
+  train    : 7672
+  valid    : 959
+  test     : 959
+  PAD_ID   : 1204
+
+--- 3. Dataset Samples (from Train Set) ---
+  Sample 1:
+    Raw sequence IDs : [46, 46, 1204, 1204, 1204, 1204, 1204, 1204, 1204, 1204]
+    Raw target ID    : 173
+    Original SIDs seq: ['<a_196><b_45><c_154>', '<a_196><b_45><c_154>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>']
+    Original SID tgt : <a_100><b_202><c_198>
+  Sample 2:
+    Raw sequence IDs : [300, 1204, 1204, 1204, 1204, 1204, 1204, 1204, 1204, 1204]
+    Raw target ID    : 522
+    Original SIDs seq: ['<a_240><b_69><c_38>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>']
+    Original SID tgt : <a_34><b_39><c_81>
+  Sample 3:
+    Raw sequence IDs : [8, 1204, 1204, 1204, 1204, 1204, 1204, 1204, 1204, 1204]
+    Raw target ID    : 9
+    Original SIDs seq: ['<a_210><b_229><c_76>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>', '<PAD>']
+    Original SID tgt : <a_100><b_70><c_15>
+============================================================
+Epoch 0:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 0:  12%|█▎        | 1/8 [00:00<00:03,  2.01it/s]Epoch 0: 100%|██████████| 8/8 [00:00<00:00, 16.61it/s]Epoch 0: 100%|██████████| 8/8 [00:00<00:00, 12.23it/s]
+  Val: HR@1=0.0042  HR@3=0.0052  HR@5=0.0104  HR@10=0.0136  HR@20=0.0448  NDCG@1=0.0042  NDCG@3=0.0048  NDCG@5=0.0069  NDCG@10=0.0080  NDCG@20=0.0155
+  best_epoch=0 early_stop=0
+Epoch 1:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 1:  12%|█▎        | 1/8 [00:00<00:02,  2.53it/s]Epoch 1: 100%|██████████| 8/8 [00:00<00:00, 14.70it/s]
+  Val: HR@1=0.0042  HR@3=0.0292  HR@5=0.0480  HR@10=0.0521  HR@20=0.0688  NDCG@1=0.0042  NDCG@3=0.0194  NDCG@5=0.0274  NDCG@10=0.0288  NDCG@20=0.0330
+  best_epoch=1 early_stop=0
+Epoch 2:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 2:  12%|█▎        | 1/8 [00:00<00:03,  2.29it/s]Epoch 2: 100%|██████████| 8/8 [00:00<00:00, 14.04it/s]
+  Val: HR@1=0.0250  HR@3=0.0323  HR@5=0.0501  HR@10=0.0605  HR@20=0.0792  NDCG@1=0.0250  NDCG@3=0.0292  NDCG@5=0.0368  NDCG@10=0.0402  NDCG@20=0.0449
+  best_epoch=2 early_stop=0
+Epoch 3:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 3:  12%|█▎        | 1/8 [00:00<00:02,  3.24it/s]Epoch 3: 100%|██████████| 8/8 [00:00<00:00, 18.55it/s]
+  Val: HR@1=0.0250  HR@3=0.0323  HR@5=0.0542  HR@10=0.0647  HR@20=0.0897  NDCG@1=0.0250  NDCG@3=0.0294  NDCG@5=0.0386  NDCG@10=0.0420  NDCG@20=0.0485
+  best_epoch=3 early_stop=0
+Epoch 4:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 4:  12%|█▎        | 1/8 [00:00<00:02,  2.37it/s]Epoch 4: 100%|██████████| 8/8 [00:00<00:00, 14.36it/s]
+  Val: HR@1=0.0250  HR@3=0.0344  HR@5=0.0542  HR@10=0.0699  HR@20=0.1251  NDCG@1=0.0250  NDCG@3=0.0304  NDCG@5=0.0387  NDCG@10=0.0439  NDCG@20=0.0570
+  best_epoch=4 early_stop=0
+Epoch 5:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 5:  12%|█▎        | 1/8 [00:00<00:02,  2.74it/s]Epoch 5: 100%|██████████| 8/8 [00:00<00:00, 15.48it/s]
+  Val: HR@1=0.0261  HR@3=0.0323  HR@5=0.0553  HR@10=0.0782  HR@20=0.1502  NDCG@1=0.0261  NDCG@3=0.0296  NDCG@5=0.0392  NDCG@10=0.0466  NDCG@20=0.0639
+  best_epoch=5 early_stop=0
+Epoch 6:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 6:  12%|█▎        | 1/8 [00:00<00:03,  2.22it/s]Epoch 6: 100%|██████████| 8/8 [00:00<00:00, 13.58it/s]
+  Val: HR@1=0.0250  HR@3=0.0323  HR@5=0.0584  HR@10=0.0782  HR@20=0.1554  NDCG@1=0.0250  NDCG@3=0.0292  NDCG@5=0.0401  NDCG@10=0.0464  NDCG@20=0.0661
+  best_epoch=6 early_stop=0
+Epoch 7:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 7:  12%|█▎        | 1/8 [00:00<00:03,  2.15it/s]Epoch 7: 100%|██████████| 8/8 [00:00<00:00, 13.26it/s]
+  Val: HR@1=0.0042  HR@3=0.0334  HR@5=0.0594  HR@10=0.0751  HR@20=0.1533  NDCG@1=0.0042  NDCG@3=0.0197  NDCG@5=0.0306  NDCG@10=0.0356  NDCG@20=0.0560
+  best_epoch=6 early_stop=1
+Epoch 8:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 8:  12%|█▎        | 1/8 [00:00<00:02,  2.92it/s]Epoch 8: 100%|██████████| 8/8 [00:00<00:00, 16.74it/s]
+  Val: HR@1=0.0031  HR@3=0.0334  HR@5=0.0584  HR@10=0.1095  HR@20=0.1575  NDCG@1=0.0031  NDCG@3=0.0193  NDCG@5=0.0292  NDCG@10=0.0448  NDCG@20=0.0571
+  best_epoch=6 early_stop=2
+Epoch 9:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 9:  12%|█▎        | 1/8 [00:00<00:03,  1.99it/s]Epoch 9: 100%|██████████| 8/8 [00:00<00:00, 12.53it/s]
+  Val: HR@1=0.0031  HR@3=0.0334  HR@5=0.0584  HR@10=0.1210  HR@20=0.1637  NDCG@1=0.0031  NDCG@3=0.0188  NDCG@5=0.0287  NDCG@10=0.0478  NDCG@20=0.0583
+  best_epoch=6 early_stop=3
+Epoch 10:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 10:  12%|█▎        | 1/8 [00:00<00:03,  2.02it/s]Epoch 10: 100%|██████████| 8/8 [00:00<00:00, 12.50it/s]
+  Val: HR@1=0.0031  HR@3=0.0292  HR@5=0.0584  HR@10=0.1199  HR@20=0.1700  NDCG@1=0.0031  NDCG@3=0.0167  NDCG@5=0.0284  NDCG@10=0.0472  NDCG@20=0.0596
+  best_epoch=6 early_stop=4
+Epoch 11:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 11:  12%|█▎        | 1/8 [00:00<00:02,  2.53it/s]Epoch 11: 100%|██████████| 8/8 [00:00<00:00, 15.05it/s]
+  Val: HR@1=0.0031  HR@3=0.0292  HR@5=0.0438  HR@10=0.1220  HR@20=0.1741  NDCG@1=0.0031  NDCG@3=0.0167  NDCG@5=0.0227  NDCG@10=0.0475  NDCG@20=0.0602
+  best_epoch=6 early_stop=5
+Epoch 12:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 12:  12%|█▎        | 1/8 [00:00<00:03,  2.11it/s]Epoch 12: 100%|██████████| 8/8 [00:00<00:00, 12.98it/s]
+  Val: HR@1=0.0031  HR@3=0.0125  HR@5=0.0459  HR@10=0.1220  HR@20=0.1856  NDCG@1=0.0031  NDCG@3=0.0082  NDCG@5=0.0222  NDCG@10=0.0472  NDCG@20=0.0626
+  best_epoch=6 early_stop=6
+Epoch 13:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 13:  12%|█▎        | 1/8 [00:00<00:01,  4.46it/s]Epoch 13: 100%|██████████| 8/8 [00:00<00:00, 21.32it/s]
+  Val: HR@1=0.0031  HR@3=0.0125  HR@5=0.0469  HR@10=0.1230  HR@20=0.1762  NDCG@1=0.0031  NDCG@3=0.0084  NDCG@5=0.0220  NDCG@10=0.0471  NDCG@20=0.0600
+  best_epoch=6 early_stop=7
+Epoch 14:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 14:  12%|█▎        | 1/8 [00:00<00:03,  2.12it/s]Epoch 14: 100%|██████████| 8/8 [00:00<00:00, 13.17it/s]
+  Val: HR@1=0.0031  HR@3=0.0125  HR@5=0.0469  HR@10=0.1230  HR@20=0.1637  NDCG@1=0.0031  NDCG@3=0.0084  NDCG@5=0.0220  NDCG@10=0.0471  NDCG@20=0.0572
+  best_epoch=6 early_stop=8
+Epoch 15:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 15:  12%|█▎        | 1/8 [00:00<00:02,  2.43it/s]Epoch 15: 100%|██████████| 8/8 [00:00<00:00, 14.53it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0469  HR@10=0.1230  HR@20=0.1668  NDCG@1=0.0031  NDCG@3=0.0078  NDCG@5=0.0220  NDCG@10=0.0471  NDCG@20=0.0580
+  best_epoch=6 early_stop=9
+Epoch 16:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 16:  12%|█▎        | 1/8 [00:00<00:03,  2.26it/s]Epoch 16: 100%|██████████| 8/8 [00:00<00:00, 14.04it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0480  HR@10=0.1230  HR@20=0.1710  NDCG@1=0.0031  NDCG@3=0.0078  NDCG@5=0.0224  NDCG@10=0.0471  NDCG@20=0.0590
+  best_epoch=6 early_stop=10
+Epoch 17:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 17:  12%|█▎        | 1/8 [00:00<00:02,  2.81it/s]Epoch 17: 100%|██████████| 8/8 [00:00<00:00, 16.35it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0407  HR@10=0.1230  HR@20=0.1731  NDCG@1=0.0031  NDCG@3=0.0078  NDCG@5=0.0196  NDCG@10=0.0469  NDCG@20=0.0593
+  best_epoch=6 early_stop=11
+Epoch 18:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 18:  12%|█▎        | 1/8 [00:00<00:02,  3.14it/s]Epoch 18: 100%|██████████| 8/8 [00:00<00:00, 17.18it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0407  HR@10=0.1241  HR@20=0.1741  NDCG@1=0.0031  NDCG@3=0.0078  NDCG@5=0.0199  NDCG@10=0.0475  NDCG@20=0.0599
+  best_epoch=6 early_stop=12
+Epoch 19:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 19:  12%|█▎        | 1/8 [00:00<00:02,  2.59it/s]Epoch 19: 100%|██████████| 8/8 [00:00<00:00, 15.31it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0407  HR@10=0.1230  HR@20=0.1731  NDCG@1=0.0031  NDCG@3=0.0077  NDCG@5=0.0200  NDCG@10=0.0478  NDCG@20=0.0602
+  best_epoch=6 early_stop=13
+Epoch 20:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 20:  12%|█▎        | 1/8 [00:00<00:02,  2.42it/s]Epoch 20: 100%|██████████| 8/8 [00:00<00:00, 14.29it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0407  HR@10=0.1241  HR@20=0.1731  NDCG@1=0.0031  NDCG@3=0.0077  NDCG@5=0.0195  NDCG@10=0.0477  NDCG@20=0.0597
+  best_epoch=6 early_stop=14
+Epoch 21:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 21:  12%|█▎        | 1/8 [00:00<00:02,  2.36it/s]Epoch 21: 100%|██████████| 8/8 [00:00<00:00, 13.72it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0417  HR@10=0.1241  HR@20=0.1721  NDCG@1=0.0031  NDCG@3=0.0077  NDCG@5=0.0199  NDCG@10=0.0477  NDCG@20=0.0596
+  best_epoch=6 early_stop=15
+Epoch 22:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 22:  12%|█▎        | 1/8 [00:00<00:03,  2.11it/s]Epoch 22: 100%|██████████| 8/8 [00:00<00:00, 13.10it/s]
+  Val: HR@1=0.0031  HR@3=0.0115  HR@5=0.0636  HR@10=0.1262  HR@20=0.1710  NDCG@1=0.0031  NDCG@3=0.0077  NDCG@5=0.0293  NDCG@10=0.0500  NDCG@20=0.0612
+  best_epoch=6 early_stop=16
+Epoch 23:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 23:  12%|█▎        | 1/8 [00:00<00:02,  2.40it/s]Epoch 23: 100%|██████████| 8/8 [00:00<00:00, 14.31it/s]
+  Val: HR@1=0.0031  HR@3=0.0104  HR@5=0.0772  HR@10=0.1262  HR@20=0.1700  NDCG@1=0.0031  NDCG@3=0.0072  NDCG@5=0.0350  NDCG@10=0.0508  NDCG@20=0.0618
+  best_epoch=6 early_stop=17
+Epoch 24:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 24:  12%|█▎        | 1/8 [00:00<00:02,  2.44it/s]Epoch 24: 100%|██████████| 8/8 [00:00<00:00, 14.13it/s]
+  Val: HR@1=0.0031  HR@3=0.0104  HR@5=0.0751  HR@10=0.1241  HR@20=0.1710  NDCG@1=0.0031  NDCG@3=0.0072  NDCG@5=0.0341  NDCG@10=0.0501  NDCG@20=0.0619
+  best_epoch=6 early_stop=18
+Epoch 25:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 25:  12%|█▎        | 1/8 [00:00<00:03,  2.22it/s]Epoch 25: 100%|██████████| 8/8 [00:00<00:00, 13.63it/s]
+  Val: HR@1=0.0031  HR@3=0.0104  HR@5=0.0751  HR@10=0.1241  HR@20=0.1710  NDCG@1=0.0031  NDCG@3=0.0072  NDCG@5=0.0341  NDCG@10=0.0505  NDCG@20=0.0622
+  best_epoch=6 early_stop=19
+Epoch 26:   0%|          | 0/8 [00:00<?, ?it/s]Epoch 26:  12%|█▎        | 1/8 [00:00<00:03,  1.98it/s]Epoch 26:  88%|████████▊ | 7/8 [00:00<00:00, 10.90it/s]
+  Val: HR@1=0.0031  HR@3=0.0104  HR@5=0.0813  HR@10=0.1262  HR@20=0.1710  NDCG@1=0.0031  NDCG@3=0.0072  NDCG@5=0.0365  NDCG@10=0.0515  NDCG@20=0.0626
+Early stop at epoch 26
+Saved to experiments/SASRec_Industrial_and_Scientific
+metrics.tsv: experiments/SASRec_Industrial_and_Scientific/metrics.tsv
+final_result.json: experiments/SASRec_Industrial_and_Scientific/final_result.json
+Best ckpt from epoch 6 (val NDCG@20=0.0661)
+Result: {'best_epoch': 6, 'best_from_val_NDCG20': 0.0661353030716913, 'NDCG': {1: 0.021897810218978103, 3: 0.024392898686859482, 5: 0.03749999363554158, 10: 0.044663700744183396, 20: 0.06604365089265347, 50: 0.08193424769810267}, 'HR': {1: 0.021897810218978103, 3: 0.026068821689259645, 5: 0.05735140771637122, 10: 0.08029197080291971, 20: 0.16371220020855057, 50: 0.24608967674661106}}

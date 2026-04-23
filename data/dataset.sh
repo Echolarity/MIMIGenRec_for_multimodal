@@ -1,0 +1,1 @@
+nohup python /root/sunyuqi/MIMIGenRec/newdata/possess_data.py > "log_$(date +%Y%m%d_%H%M%S).log" 2>&1 &

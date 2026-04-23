@@ -1,0 +1,1 @@
+bash scripts/rec_zoo/train_sasrec.sh --data_dir data/Industrial_and_Scientific
