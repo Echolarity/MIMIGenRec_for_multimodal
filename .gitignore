@@ -202,3 +202,39 @@ newdata/*
 newdata/
 .npy
 *.npy
+
+# ========== 模型权重 / 检查点 ==========
+*.pth
+*.safetensors
+*.bin
+*.ckpt
+*.pt
+
+# ========== 训练/实验中间JSON结果 ==========
+*result.json
+*log.json
+*meta.json
+*.index.json
+
+# ========== 实验输出目录（全忽略） ==========
+experiments/
+data/*/sasrec_models/
+data/*/text_indices/
+
+# ========== 大模型文件目录（全忽略） ==========
+models/
+
+# ========== 临时脚本文件 ==========
+*.sh
+test.sh
+late_main.sh
+macopy.sh
+
+# ========== Python缓存 ==========
+__pycache__/
+*.pyc
+*.pyo
+
+# ========== 训练配置文件（可选） ==========
+*.yaml
+*.yml
