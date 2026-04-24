@@ -44,7 +44,7 @@ export OUTPUT_DIR="./data/${CATEGORY}"
 export TASK4_SAMPLE=-1 
 export SEED=42
 
-TEXT2EMB_MODEL="/root/sunyuqi/models/Qwen3-VL-8B-Instruct"
+TEXT2EMB_MODEL="../models/Qwen3-VL-8B-Instruct"
 MODEL_NAME="Qwen3VL"
 
 # ===================== 函数定义 =====================
