@@ -11,11 +11,11 @@ set -euo pipefail
 #   4 = 生成向量索引 (generate_indices.py)
 #   5 = 预处理 SFT 训练数据 (preprocess_data_sft_rl.py)
 #   6 = 启动 SFT 训练于评估流 (bash sft.sh & evaluate.sh)
-START_STEP=4
+START_STEP=2
 
 export CATEGORY="Industrial_and_Scientific"
 POSSESS_DATA_OUTPATH="./data/Amazon" 
-export CUDA_VISIBLE="1,2,3,5"
+export CUDA_VISIBLE="1,3,5,6"
 MONO_CUDA="1" 
 
 # 【SFT 与 Evaluate 核心参数】
@@ -25,7 +25,7 @@ export EVAL_EXP_NAME="newsaves/qwen2.5-0.5b/full/${CATEGORY}-sft-${Optimization}
 # ================= ⚡ 核心模态控制器 =================
 # 原有可选值: multimodal, text_only, image_only, concat, image2text, image2text_supp, moe_decouple, contrastive_adapter
 # 🔥新增集成协同信息可选值: multimodal_collab, concat_collab, moe_collab
-export MODAL_CHOICE="multimodal_collab"
+export MODAL_CHOICE="moe_collab"
 # 补充调节参数
 export TEXT_WEIGHT="-1.0"          # -1.0为不用人工加权比重调控，使用原生融合
 export COMBINE_ORIG_TEXT="true"    # 如果是 image2text，是否加和原文本

@@ -74,7 +74,7 @@ if __name__ == "__main__":
     """build dataset"""
     data = EmbDataset(args.data_path)
     model = RQVAE(
-        in_dim=data.embeddings.shape[-1], 
+        in_dim=data.dim,
         num_emb_list=args.num_emb_list,
         e_dim=args.e_dim,
         layers=args.layers,
@@ -88,9 +88,6 @@ if __name__ == "__main__":
         sk_epsilons=args.sk_epsilons,
         sk_iters=args.sk_iters,
     )
-    # ====== 新增：启用 PyTorch 2.0+ 底层图编译加速 (无损) ======
-    if hasattr(torch, "compile"):
-        model = torch.compile(model, mode="default")
     print(model)
     data_loader = DataLoader(
         data, num_workers=args.num_workers, batch_size=args.batch_size, shuffle=True, pin_memory=True

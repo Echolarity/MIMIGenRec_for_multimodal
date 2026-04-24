@@ -2,9 +2,8 @@ import argparse
 import collections
 import json
 import os
-import warnings
+
 import numpy as np
-warnings.filterwarnings("ignore", category=FutureWarning)
 import torch
 from datasets import EmbDataset
 from models.rqvae import RQVAE
@@ -63,7 +62,7 @@ def main():
 
     data = EmbDataset(ckpt_args.data_path)
     model = RQVAE(
-        in_dim=data.embeddings.shape[-1],
+        in_dim=data.dim,
         num_emb_list=ckpt_args.num_emb_list,
         e_dim=ckpt_args.e_dim,
         layers=ckpt_args.layers,
@@ -76,7 +75,6 @@ def main():
         sk_epsilons=ckpt_args.sk_epsilons,
         sk_iters=ckpt_args.sk_iters,
     )
-    state_dict = {k.replace("_orig_mod.", ""): v for k, v in state_dict.items()}
     model.load_state_dict(state_dict)
     model = model.to(device)
     model.eval()
@@ -94,9 +92,7 @@ def main():
     all_indices = []
     all_indices_str = []
     for d in tqdm(data_loader):
-        # d = d.to(device)
-        # ====== 修改：加入 non_blocking=True，使推理数据上载不阻塞 ======
-        d = d.to(device, non_blocking=True)
+        d = d.to(device)
         indices = model.get_indices(d, use_sk=False)
         indices = indices.view(-1, indices.shape[-1]).cpu().numpy()
         for index in indices:
@@ -119,10 +115,7 @@ def main():
         collision_item_groups = get_collision_item(all_indices_str)
         print("Collision groups:", len(collision_item_groups))
         for collision_items in collision_item_groups:
-            # d = data[collision_items].to(device)
-            # ====== 修改：直接利用内部张量切片，避免 Dataset 的 __getitem__ 不兼容列表索引 ======
-            d = data.embeddings[collision_items].to(device, non_blocking=True)
-            
+            d = data[collision_items].to(device)
             indices = model.get_indices(d, use_sk=True)
             indices = indices.view(-1, indices.shape[-1]).cpu().numpy()
             for item, index in zip(collision_items, indices):

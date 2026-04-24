@@ -100,14 +100,8 @@ class Trainer:
         )
 
         for batch_idx, data in enumerate(iter_data):
-            # data = data.to(self.device)
-            # self.optimizer.zero_grad()
-            # ====== 修改：加入 non_blocking=True 允许数据并发 =======
-            data = data.to(self.device, non_blocking=True)
-            # ====== 修改：加入 set_to_none=True 优化梯度清空性能 ======
-            self.optimizer.zero_grad(set_to_none=True)
-            
-            
+            data = data.to(self.device)
+            self.optimizer.zero_grad()
             out, rq_loss, indices = self.model(data)
             loss, loss_recon = self.model.compute_loss(out, rq_loss, xs=data)
             self._check_nan(loss)
@@ -121,31 +115,6 @@ class Trainer:
 
         return total_loss, total_recon_loss
 
-    # @torch.no_grad()
-    # def _valid_epoch(self, valid_data):
-    #     self.model.eval()
-
-    #     iter_data = tqdm(
-    #         valid_data,
-    #         total=len(valid_data),
-    #         ncols=100,
-    #         desc=set_color("Evaluate   ", "pink"),
-    #     )
-
-    #     indices_set = set()
-    #     num_sample = 0
-    #     for batch_idx, data in enumerate(iter_data):
-    #         num_sample += len(data)
-    #         data = data.to(self.device)
-    #         indices = self.model.get_indices(data)
-    #         indices = indices.view(-1, indices.shape[-1]).cpu().numpy()
-    #         for index in indices:
-    #             code = "-".join([str(int(_)) for _ in index])
-    #             indices_set.add(code)
-
-    #     collision_rate = (num_sample - len(list(indices_set))) / num_sample
-
-    #     return collision_rate
     @torch.no_grad()
     def _valid_epoch(self, valid_data):
         self.model.eval()
@@ -157,23 +126,21 @@ class Trainer:
             desc=set_color("Evaluate   ", "pink"),
         )
 
-        # ====== 修改：移除 String 和 Set 拼接逻辑，准备纯张量计算 ======
+        indices_set = set()
         num_sample = 0
-        all_indices = []
-        
         for batch_idx, data in enumerate(iter_data):
             num_sample += len(data)
-            data = data.to(self.device, non_blocking=True)
+            data = data.to(self.device)
             indices = self.model.get_indices(data)
-            all_indices.append(indices.view(-1, indices.shape[-1]))
+            indices = indices.view(-1, indices.shape[-1]).cpu().numpy()
+            for index in indices:
+                code = "-".join([str(int(_)) for _ in index])
+                indices_set.add(code)
 
-        # ====== 修改：原生 GPU/CPU 张量排重，等价但快百倍 ======
-        all_indices_tensor = torch.cat(all_indices, dim=0)
-        unique_indices = torch.unique(all_indices_tensor, dim=0)
-        
-        collision_rate = (num_sample - unique_indices.shape[0]) / num_sample
+        collision_rate = (num_sample - len(list(indices_set))) / num_sample
 
         return collision_rate
+
     def _save_checkpoint(self, epoch, collision_rate=1, ckpt_file=None):
         ckpt_path = (
             os.path.join(self.ckpt_dir, ckpt_file)

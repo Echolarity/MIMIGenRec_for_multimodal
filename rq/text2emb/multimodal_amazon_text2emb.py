@@ -11,178 +11,178 @@ from accelerate.utils import gather_object
 from tqdm import tqdm
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForImageTextToText
-
-
+from moe_fusion import MoEDecoupler, ContrastiveAdapter
+from moe_plotter import plot_moe_training_curves
 Orthogonal_Loss_Weight=0.2
-# ----------------- 🛠️ 新增：包含协同信息 (Collab) 的 MoE 特征解耦学习网络 -----------------
-class MoECollabDecoupler(nn.Module):
-    def __init__(self, input_dim, collab_dim):
-        super().__init__()
-        # 降维映射，因为 SASRec 的表征通常较小(128)，需先向上投影同文本/图像隐空间同维对齐
-        self.collab_proj = nn.Sequential(
-            nn.Linear(collab_dim, input_dim),
-            nn.LeakyReLU(0.1),
-            nn.Linear(input_dim, input_dim)
-        )
-        # 三个独立主专家
-        self.expert_text = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
-        self.expert_image = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
-        self.expert_collab = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
+# # ----------------- 🛠️ 新增：包含协同信息 (Collab) 的 MoE 特征解耦学习网络 -----------------
+# class MoECollabDecoupler(nn.Module):
+#     def __init__(self, input_dim, collab_dim):
+#         super().__init__()
+#         # 降维映射，因为 SASRec 的表征通常较小(128)，需先向上投影同文本/图像隐空间同维对齐
+#         self.collab_proj = nn.Sequential(
+#             nn.Linear(collab_dim, input_dim),
+#             nn.LeakyReLU(0.1),
+#             nn.Linear(input_dim, input_dim)
+#         )
+#         # 三个独立主专家
+#         self.expert_text = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
+#         self.expert_image = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
+#         self.expert_collab = nn.Sequential(nn.Linear(input_dim, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
         
-        # 共享信息专家
-        self.expert_shared = nn.Sequential(nn.Linear(input_dim * 3, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
-        # 门控机制接收三个模态做 Softmax 打分分配资源
-        self.gate = nn.Sequential(nn.Linear(input_dim * 3, 4), nn.Softmax(dim=-1))
+#         # 共享信息专家
+#         self.expert_shared = nn.Sequential(nn.Linear(input_dim * 3, input_dim), nn.LeakyReLU(0.1), nn.Linear(input_dim, input_dim))
+#         # 门控机制接收三个模态做 Softmax 打分分配资源
+#         self.gate = nn.Sequential(nn.Linear(input_dim * 3, 4), nn.Softmax(dim=-1))
         
-        # 重构回推解码器
-        self.decoder_t = nn.Linear(input_dim, input_dim)
-        self.decoder_i = nn.Linear(input_dim, input_dim)
-        self.decoder_c = nn.Linear(input_dim, input_dim)
+#         # 重构回推解码器
+#         self.decoder_t = nn.Linear(input_dim, input_dim)
+#         self.decoder_i = nn.Linear(input_dim, input_dim)
+#         self.decoder_c = nn.Linear(input_dim, input_dim)
 
-    def ortho_loss(self, f1, f2):
-        return torch.mean((F.normalize(f1, p=2, dim=-1) * F.normalize(f2, p=2, dim=-1)).sum(dim=-1) ** 2)
+#     def ortho_loss(self, f1, f2):
+#         return torch.mean((F.normalize(f1, p=2, dim=-1) * F.normalize(f2, p=2, dim=-1)).sum(dim=-1) ** 2)
 
-    def forward(self, x_t, x_i, x_c):
-        # 空间对齐
-        x_c_proj = self.collab_proj(x_c)
+#     def forward(self, x_t, x_i, x_c):
+#         # 空间对齐
+#         x_c_proj = self.collab_proj(x_c)
 
-        h_t = self.expert_text(x_t)
-        h_i = self.expert_image(x_i)
-        h_c = self.expert_collab(x_c_proj)
+#         h_t = self.expert_text(x_t)
+#         h_i = self.expert_image(x_i)
+#         h_c = self.expert_collab(x_c_proj)
         
-        concat_input = torch.cat([x_t, x_i, x_c_proj], dim=-1)
-        h_s = self.expert_shared(concat_input)
+#         concat_input = torch.cat([x_t, x_i, x_c_proj], dim=-1)
+#         h_s = self.expert_shared(concat_input)
         
-        # 两两之间的强迫正交
-        loss_ortho = self.ortho_loss(h_t, h_s) + self.ortho_loss(h_i, h_s) + self.ortho_loss(h_c, h_s) + \
-                     self.ortho_loss(h_t, h_i) + self.ortho_loss(h_t, h_c) + self.ortho_loss(h_i, h_c)
+#         # 两两之间的强迫正交
+#         loss_ortho = self.ortho_loss(h_t, h_s) + self.ortho_loss(h_i, h_s) + self.ortho_loss(h_c, h_s) + \
+#                      self.ortho_loss(h_t, h_i) + self.ortho_loss(h_t, h_c) + self.ortho_loss(h_i, h_c)
                      
-        gate_scores = self.gate(concat_input) # [B, 4]
-        fused = (gate_scores[:, 0:1] * h_t) + (gate_scores[:, 1:2] * h_i) + \
-                (gate_scores[:, 2:3] * h_c) + (gate_scores[:, 3:4] * h_s)
+#         gate_scores = self.gate(concat_input) # [B, 4]
+#         fused = (gate_scores[:, 0:1] * h_t) + (gate_scores[:, 1:2] * h_i) + \
+#                 (gate_scores[:, 2:3] * h_c) + (gate_scores[:, 3:4] * h_s)
                 
-        loss_rec = F.mse_loss(self.decoder_t(fused), x_t) + \
-                   F.mse_loss(self.decoder_i(fused), x_i) + \
-                   F.mse_loss(self.decoder_c(fused), x_c_proj)
+#         loss_rec = F.mse_loss(self.decoder_t(fused), x_t) + \
+#                    F.mse_loss(self.decoder_i(fused), x_i) + \
+#                    F.mse_loss(self.decoder_c(fused), x_c_proj)
                    
-        total_loss = loss_rec + Orthogonal_Loss_Weight * loss_ortho
-        return fused, total_loss
-# ----------------- 🛠️ 新增：MoE 特征解耦学习网络 -----------------
-class MoEDecoupler(nn.Module):
-    def __init__(self, input_dim):
-        super().__init__()
-        # 1. 文本模态专属专家 (Text Expert)
-        self.expert_text = nn.Sequential(
-            nn.Linear(input_dim, input_dim),
-            nn.LeakyReLU(0.1),
-            nn.Linear(input_dim, input_dim)
-        )
+#         total_loss = loss_rec + Orthogonal_Loss_Weight * loss_ortho
+#         return fused, total_loss
+# # ----------------- 🛠️ 新增：MoE 特征解耦学习网络 -----------------
+# class MoEDecoupler(nn.Module):
+#     def __init__(self, input_dim):
+#         super().__init__()
+#         # 1. 文本模态专属专家 (Text Expert)
+#         self.expert_text = nn.Sequential(
+#             nn.Linear(input_dim, input_dim),
+#             nn.LeakyReLU(0.1),
+#             nn.Linear(input_dim, input_dim)
+#         )
         
-        # 2. 图像模态专属专家 (Image Expert)
-        self.expert_image = nn.Sequential(
-            nn.Linear(input_dim, input_dim),
-            nn.LeakyReLU(0.1),
-            nn.Linear(input_dim, input_dim)
-        )
+#         # 2. 图像模态专属专家 (Image Expert)
+#         self.expert_image = nn.Sequential(
+#             nn.Linear(input_dim, input_dim),
+#             nn.LeakyReLU(0.1),
+#             nn.Linear(input_dim, input_dim)
+#         )
         
-        # 3. 共享信息专家 (Shared Expert)
-        self.expert_shared = nn.Sequential(
-            nn.Linear(input_dim * 2, input_dim),
-            nn.LeakyReLU(0.1),
-            nn.Linear(input_dim, input_dim)
-        )
+#         # 3. 共享信息专家 (Shared Expert)
+#         self.expert_shared = nn.Sequential(
+#             nn.Linear(input_dim * 2, input_dim),
+#             nn.LeakyReLU(0.1),
+#             nn.Linear(input_dim, input_dim)
+#         )
         
-        # 门控机制 (Gate): 根据共享特征决定三个专家的融合权重
-        self.gate = nn.Sequential(
-            nn.Linear(input_dim * 2, 3),
-            nn.Softmax(dim=-1)
-        )
+#         # 门控机制 (Gate): 根据共享特征决定三个专家的融合权重
+#         self.gate = nn.Sequential(
+#             nn.Linear(input_dim * 2, 3),
+#             nn.Softmax(dim=-1)
+#         )
         
-        # 重构监督机制: 保证特征不丢失原始重要信息
-        self.decoder_t = nn.Linear(input_dim, input_dim)
-        self.decoder_i = nn.Linear(input_dim, input_dim)
+#         # 重构监督机制: 保证特征不丢失原始重要信息
+#         self.decoder_t = nn.Linear(input_dim, input_dim)
+#         self.decoder_i = nn.Linear(input_dim, input_dim)
 
-    def ortho_loss(self, f1, f2):
-        """ 余弦相似度正交惩罚：让特征向空间彼此正交(独立)的方向优化 """
-        f1_norm = F.normalize(f1, p=2, dim=-1)
-        f2_norm = F.normalize(f2, p=2, dim=-1)
-        return torch.mean((f1_norm * f2_norm).sum(dim=-1) ** 2)
+#     def ortho_loss(self, f1, f2):
+#         """ 余弦相似度正交惩罚：让特征向空间彼此正交(独立)的方向优化 """
+#         f1_norm = F.normalize(f1, p=2, dim=-1)
+#         f2_norm = F.normalize(f2, p=2, dim=-1)
+#         return torch.mean((f1_norm * f2_norm).sum(dim=-1) ** 2)
 
-    def forward(self, x_t, x_i):
-        # 通过三个专家提取解耦特征
-        h_t = self.expert_text(x_t)
-        h_i = self.expert_image(x_i)
-        concat_input = torch.cat([x_t, x_i], dim=-1)
-        h_s = self.expert_shared(concat_input)
+#     def forward(self, x_t, x_i):
+#         # 通过三个专家提取解耦特征
+#         h_t = self.expert_text(x_t)
+#         h_i = self.expert_image(x_i)
+#         concat_input = torch.cat([x_t, x_i], dim=-1)
+#         h_s = self.expert_shared(concat_input)
         
-        # 计算正交解耦损失 (确保专属文本特征、专属图像特征、共享特征彼此独立)
-        loss_ortho = self.ortho_loss(h_t, h_s) + \
-                     self.ortho_loss(h_i, h_s) + \
-                     self.ortho_loss(h_t, h_i)
+#         # 计算正交解耦损失 (确保专属文本特征、专属图像特征、共享特征彼此独立)
+#         loss_ortho = self.ortho_loss(h_t, h_s) + \
+#                      self.ortho_loss(h_i, h_s) + \
+#                      self.ortho_loss(h_t, h_i)
                      
-        # MoE 门控融合
-        gate_scores = self.gate(concat_input) # [B, 3]
-        fused = (gate_scores[:, 0:1] * h_t) + \
-                (gate_scores[:, 1:2] * h_i) + \
-                (gate_scores[:, 2:3] * h_s)
+#         # MoE 门控融合
+#         gate_scores = self.gate(concat_input) # [B, 3]
+#         fused = (gate_scores[:, 0:1] * h_t) + \
+#                 (gate_scores[:, 1:2] * h_i) + \
+#                 (gate_scores[:, 2:3] * h_s)
                 
-        # 计算重构损失 (使得融合表达依然能代表原始模态输入)
-        rec_t = self.decoder_t(fused)
-        rec_i = self.decoder_i(fused)
-        loss_rec = F.mse_loss(rec_t, x_t) + F.mse_loss(rec_i, x_i)
+#         # 计算重构损失 (使得融合表达依然能代表原始模态输入)
+#         rec_t = self.decoder_t(fused)
+#         rec_i = self.decoder_i(fused)
+#         loss_rec = F.mse_loss(rec_t, x_t) + F.mse_loss(rec_i, x_i)
         
-        # 总 Loss = 重构约束保真度 + 余弦正交解耦惩罚
-        total_loss = loss_rec + Orthogonal_Loss_Weight * loss_ortho
-        return fused, total_loss
+#         # 总 Loss = 重构约束保真度 + 余弦正交解耦惩罚
+#         total_loss = loss_rec + Orthogonal_Loss_Weight * loss_ortho
+#         return fused, total_loss
 
-# ----------------- 🛠️ 新增：对比对齐适配器网络 (Contrastive Adapter) -----------------
-class ContrastiveAdapter(nn.Module):
-    def __init__(self, input_dim, proj_dim=None):
-        super().__init__()
-        if proj_dim is None:
-            proj_dim = input_dim
-        # 针对文本的投影头
-        self.text_proj = nn.Sequential(
-            nn.Linear(input_dim, proj_dim),
-            nn.GELU(),
-            nn.Linear(proj_dim, proj_dim)
-        )
-        # 针对图像的投影头
-        self.image_proj = nn.Sequential(
-            nn.Linear(input_dim, proj_dim),
-            nn.GELU(),
-            nn.Linear(proj_dim, proj_dim)
-        )
-        # InfoNCE 的温度系数
-        self.temperature = nn.Parameter(torch.ones([]) * 0.07)
+# # ----------------- 🛠️ 新增：对比对齐适配器网络 (Contrastive Adapter) -----------------
+# class ContrastiveAdapter(nn.Module):
+#     def __init__(self, input_dim, proj_dim=None):
+#         super().__init__()
+#         if proj_dim is None:
+#             proj_dim = input_dim
+#         # 针对文本的投影头
+#         self.text_proj = nn.Sequential(
+#             nn.Linear(input_dim, proj_dim),
+#             nn.GELU(),
+#             nn.Linear(proj_dim, proj_dim)
+#         )
+#         # 针对图像的投影头
+#         self.image_proj = nn.Sequential(
+#             nn.Linear(input_dim, proj_dim),
+#             nn.GELU(),
+#             nn.Linear(proj_dim, proj_dim)
+#         )
+#         # InfoNCE 的温度系数
+#         self.temperature = nn.Parameter(torch.ones([]) * 0.07)
 
-    def forward(self, text_features, image_features):
-        z_t = self.text_proj(text_features)
-        z_i = self.image_proj(image_features)
+#     def forward(self, text_features, image_features):
+#         z_t = self.text_proj(text_features)
+#         z_i = self.image_proj(image_features)
         
-        # L2 正则化
-        z_t = F.normalize(z_t, p=2, dim=-1)
-        z_i = F.normalize(z_i, p=2, dim=-1)
+#         # L2 正则化
+#         z_t = F.normalize(z_t, p=2, dim=-1)
+#         z_i = F.normalize(z_i, p=2, dim=-1)
         
-        # 对称对比损失 InfoNCE (以图像搜文本，且以文本搜图像)
-        t = torch.clamp(self.temperature, min=1e-4) 
-        logits_per_image = (z_i @ z_t.T) / t
-        logits_per_text = (z_t @ z_i.T) / t
+#         # 对称对比损失 InfoNCE (以图像搜文本，且以文本搜图像)
+#         t = torch.clamp(self.temperature, min=1e-4) 
+#         logits_per_image = (z_i @ z_t.T) / t
+#         logits_per_text = (z_t @ z_i.T) / t
         
-        batch_size = z_t.size(0)
-        labels = torch.arange(batch_size, device=z_t.device)
+#         batch_size = z_t.size(0)
+#         labels = torch.arange(batch_size, device=z_t.device)
         
-        loss_i = F.cross_entropy(logits_per_image, labels)
-        loss_t = F.cross_entropy(logits_per_text, labels)
+#         loss_i = F.cross_entropy(logits_per_image, labels)
+#         loss_t = F.cross_entropy(logits_per_text, labels)
         
-        return (loss_i + loss_t) / 2.0
+#         return (loss_i + loss_t) / 2.0
 
-    @torch.no_grad()
-    def get_fused_features(self, text_features, image_features):
-        z_t = self.text_proj(text_features)
-        z_i = self.image_proj(image_features)
-        # 将文本和图像映射到对应的完美对齐隐空间后，直接相加作为无间隙融合特征🔥
-        return z_t + z_i
+#     @torch.no_grad()
+#     def get_fused_features(self, text_features, image_features):
+#         z_t = self.text_proj(text_features)
+#         z_i = self.image_proj(image_features)
+#         # 将文本和图像映射到对应的完美对齐隐空间后，直接相加作为无间隙融合特征🔥
+#         return z_t + z_i
 
 # ----------------- 基础工具函数 -----------------
 def clean_text(text):
@@ -459,6 +459,20 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator,
             pbar.update(len(batch_texts))
 
     pbar.close()
+    print(f"🔥 [进程 {process_index}] 正在暴力释放残余的 LLM 显存占用...")
+    
+    # 1. 强行把模型所有参数移出当前 GPU 
+    model.cpu()
+    
+    # 2. 物理级抽干 Tensor 数据，不管外部还有没有变量指向它，GPU 空间通通腾出来
+    for param in model.parameters():
+        param.data = torch.empty(0)
+        
+    # 3. 清除当前局部引用并启动 Python 垃圾回收
+    del model
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
     accelerator.wait_for_everyone()
 
     all_results_flat = gather_object(local_results)
@@ -466,87 +480,22 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator,
         print("Gathering finished. Sorting and assembling data...")
         all_results_flat.sort(key=lambda x: x[0])
         final_embeddings = np.stack([x[1] for x in all_results_flat], axis=0)
-
-        # 🚀 激活动态学习域 (MoE_Decouple)
-        if args.mode == "moe_decouple":
-            print(f"\n⚡ [机制启动] 开始对特征组进行 [{args.mode}] 策略专属 MoE 网学习与融合训练! ⚡")
+        # 🚀 激活动态学习域 (双模态 moe_decouple / 三模态 moe_collab 逻辑大统一融合!)
+        if args.mode in ["moe_decouple", "moe_collab"]:
+            is_collab = (args.mode == "moe_collab")
+            print(f"\n⚡ [机制启动] 开始对特征组进行 [{args.mode}] 核心级微型LLM混合专家网协同解耦与重构! ⚡")
             
-            N, double_dim = final_embeddings.shape
-            single_dim = double_dim // 2
-            
-            moe_model = MoEDecoupler(input_dim=single_dim).to(accelerator.device)
-            # 1. 增加 weight_decay 增加正则化稳定性
-            optimizer = torch.optim.Adam(moe_model.parameters(), lr=1e-3, weight_decay=1e-5)
-            
-            # 2. 引入余弦退火学习率调度器，让训练后期平滑收敛
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.moe_epochs)
-            
-            dataset = torch.tensor(final_embeddings, dtype=torch.float32)
-            dataloader = torch.utils.data.DataLoader(dataset, batch_size=256, shuffle=True)
-            
-            moe_model.train()
-            
-            # 3. 增加最优状态追踪机制，确保只取最收敛的一次
-            best_loss = float('inf')
-            best_model_weights = None
-            
-            print(f"--> 执行 {args.moe_epochs} epoch 正交独立学习...")
-            for epoch in range(args.moe_epochs):
-                total_loss = 0.0
-                for batch_idx, batch_feats in enumerate(dataloader):
-                    batch_feats = batch_feats.to(accelerator.device)
-                    x_t, x_i = batch_feats[:, :single_dim], batch_feats[:, single_dim:]
-                    
-                    optimizer.zero_grad()
-                    _, loss = moe_model(x_t, x_i)
-                    loss.backward()
-                    
-                    # 4. 增加梯度裁剪，防止最后两代突然因为正交惩罚发生梯度爆炸导致的Loss飙升
-                    torch.nn.utils.clip_grad_norm_(moe_model.parameters(), max_norm=1.0)
-                    
-                    optimizer.step()
-                    total_loss += loss.item()
-                
-                scheduler.step() # 学习率动态衰减
-                
-                avg_loss = total_loss / len(dataloader)
-                
-                # 记录 Best Loss 并在内存里保存模型状态
-                if avg_loss < best_loss:
-                    best_loss = avg_loss
-                    best_model_weights = copy.deepcopy(moe_model.state_dict())
-
-                if (epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1:
-                    current_lr = scheduler.get_last_lr()[0]
-                    print(f"  [MoE] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {current_lr:.6f}")
-            
-            print(f"--> 训练结束，最佳平均 Loss 锁定为: {best_loss:.4f}")
-            
-            # 5. 回滚到历史最好的一代模型！！！再进行推理
-            moe_model.load_state_dict(best_model_weights)
-            moe_model.eval()
-            
-            print("--> 开始融合最终 Decouple 特征...")
-            fused_list = []
-            infer_loader = torch.utils.data.DataLoader(dataset, batch_size=512, shuffle=False)
-            with torch.no_grad():
-                for batch_feats in infer_loader:
-                    batch_feats = batch_feats.to(accelerator.device)
-                    x_t, x_i = batch_feats[:, :single_dim], batch_feats[:, single_dim:]
-                    fused_out, _ = moe_model(x_t, x_i)
-                    fused_list.append(fused_out.cpu().numpy())
-            
-            final_embeddings = np.concatenate(fused_list, axis=0)
-            print("✅ 专家解耦与门网络重构映射全部完成！")
-        elif args.mode == "moe_collab":
-            print(f"\n⚡ [机制启动] 开始对特征组进行 [{args.mode}] 策略专属 MoE 混合网学习与融合训练! ⚡")
-            
-            # 从拼接好的 final_embeddings 中精准扒出不同模态的具体维度
             N, total_dim = final_embeddings.shape
-            collab_dim = collab_embeddings.shape[1]
-            single_dim = (total_dim - collab_dim) // 2  # 这是 VLM 输出的原生单文本/图像层维度(e.g., 3584)
+            # 动态确立张量切分维度极限
+            if is_collab:
+                collab_dim = collab_embeddings.shape[1]
+                single_dim = (total_dim - collab_dim) // 2
+            else:
+                collab_dim = None
+                single_dim = total_dim // 2
             
-            moe_model = MoECollabDecoupler(input_dim=single_dim, collab_dim=collab_dim).to(accelerator.device)
+            # 使用自适应网，只需要传不传 collab_dim 它自己就知道该建多少模块
+            moe_model = MoEDecoupler(input_dim=single_dim, collab_dim=collab_dim).to(accelerator.device)
             optimizer = torch.optim.Adam(moe_model.parameters(), lr=1e-3, weight_decay=1e-5)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.moe_epochs)
             
@@ -556,39 +505,80 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator,
             moe_model.train()
             best_loss = float('inf')
             best_model_weights = None
-            
-            print(f"--> 执行 {args.moe_epochs} epoch 的三通道协同解耦与信息重构学习...")
+            history_dict = {
+                'loss_total': [], 'loss_rec': [], 'loss_ortho': [],
+                'ortho_weight': [], 'gates': []
+            }
+            print(f"--> 执行 {args.moe_epochs} epoch 的跨模态专家解耦和信息重构学习...")
             for epoch in range(args.moe_epochs):
-                total_loss = 0.0
+                epoch_total_loss = 0.0
+                epoch_rec_loss = 0.0
+                epoch_ortho_loss = 0.0
+                # total_loss = 0.0
                 for batch_idx, batch_feats in enumerate(dataloader):
                     batch_feats = batch_feats.to(accelerator.device)
-                    # 强硬切分找回三者特征
+                    # 定位切块
                     x_t = batch_feats[:, :single_dim]
                     x_i = batch_feats[:, single_dim:single_dim*2]
-                    x_c = batch_feats[:, single_dim*2:]
                     
                     optimizer.zero_grad()
-                    _, loss = moe_model(x_t, x_i, x_c)
+                    if is_collab: # 三路打分网
+                        x_c = batch_feats[:, single_dim*2:]
+                        _, loss = moe_model(x_t, x_i, x_c)
+                    else:         # 双路打分网
+                        _, loss = moe_model(x_t, x_i)
+                        
                     loss.backward()
-                    
                     torch.nn.utils.clip_grad_norm_(moe_model.parameters(), max_norm=1.0)
                     optimizer.step()
-                    total_loss += loss.item()
+                    epoch_total_loss += loss.item()
+                    _moe = accelerator.unwrap_model(moe_model)
+                    epoch_rec_loss += getattr(_moe, '_monitor_loss_rec_real', 0.0)
+                    epoch_ortho_loss += getattr(_moe, '_monitor_loss_ortho_real', 0.0)
                 
                 scheduler.step()
-                avg_loss = total_loss / len(dataloader)
+                # avg_loss = total_loss / len(dataloader)
+                avg_total = epoch_total_loss / len(dataloader)
+                avg_rec = epoch_rec_loss / len(dataloader)
+                avg_ortho = epoch_ortho_loss / len(dataloader)            
+                if accelerator.is_main_process:
+                    history_dict['loss_total'].append(avg_total)
+                    history_dict['loss_rec'].append(avg_rec)
+                    history_dict['loss_ortho'].append(avg_ortho)
+                    history_dict['ortho_weight'].append(cur_ortho_w)
+                    history_dict['gates'].append(cur_gates)                
                 if avg_loss < best_loss:
                     best_loss = avg_loss
+                    # 深拷贝留存全局最佳权重
                     best_model_weights = copy.deepcopy(moe_model.state_dict())
-                if (epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1:
-                    current_lr = scheduler.get_last_lr()[0]
-                    print(f"  [MoE_Collab] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {current_lr:.6f}")
-            
-            print(f"--> 训练结束，最佳平均 Loss 锁定为: {best_loss:.4f}")
+
+                # if (epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1:
+                    real_ortho_w = _moe._monitor_ortho_weight if hasattr(_moe, '_monitor_ortho_weight') else Orthogonal_Loss_Weight
+                    if hasattr(_moe, '_monitor_weights'):
+                        w = _moe._monitor_weights
+                        if getattr(_moe, '_monitor_has_collab', False):
+                            shared_w = w[3:].sum()
+                            print(f"  [{args.mode}] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {scheduler.get_last_lr()[0]:.6f}, Orthogonal Weight: {real_ortho_w:.5f}, Expert Weights => Text: {w[0]:.3f} | Image: {w[1]:.3f} | Collab: {w[2]:.3f} | Shared: {shared_w:.3f}")
+                        else:
+                            shared_w = w[2:].sum()
+                            print(f"  [{args.mode}] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {scheduler.get_last_lr()[0]:.6f}, Orthogonal Weight: {real_ortho_w:.5f}, Expert Weights => Text: {w[0]:.3f} | Image: {w[1]:.3f} | Shared: {shared_w:.3f}")
+                    else:
+                        print(f"  [{args.mode}] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {scheduler.get_last_lr()[0]:.6f}, Orthogonal Weight: {real_ortho_w:.5f}")    
+                if accelerator.is_main_process and ((epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1):
+                    if len(cur_gates) > 0:
+                        if is_collab:
+                            shared_w = cur_gates[3:].sum()
+                            print(f"  [{args.mode}] Epoch [{epoch+1}/{args.moe_epochs}] | Total L: {avg_total:.4f} | Ortho Weight: {cur_ortho_w:.4f} | Gates ⟶ Text:{cur_gates[0]:.3f} Img:{cur_gates[1]:.3f} Collab:{cur_gates[2]:.3f} Shared:{shared_w:.3f}")
+                        else:
+                            shared_w = cur_gates[2:].sum()
+                            print(f"  [{args.mode}] Epoch [{epoch+1}/{args.moe_epochs}] | Total L: {avg_total:.4f} | Ortho Weight: {cur_ortho_w:.4f} | Gates ⟶ Text:{cur_gates[0]:.3f} Img:{cur_gates[1]:.3f} Shared:{shared_w:.3f}")            
+            if accelerator.is_main_process:
+                print(f"--> [训练锁定] 最佳平均重构保真度 Loss 锁定为: {best_loss:.4f}")
+                plot_moe_training_curves(history_dict, is_collab, args.mode)
             moe_model.load_state_dict(best_model_weights)
             moe_model.eval()
             
-            print("--> 开始融合最终 Decouple 特征...")
+            print("--> 开始将模型隐空间输出正式压入合并提取序列...")
             fused_list = []
             infer_loader = torch.utils.data.DataLoader(dataset, batch_size=512, shuffle=False)
             with torch.no_grad():
@@ -596,14 +586,153 @@ def generate_item_embedding(args, item_data_list, processor, model, accelerator,
                     batch_feats = batch_feats.to(accelerator.device)
                     x_t = batch_feats[:, :single_dim]
                     x_i = batch_feats[:, single_dim:single_dim*2]
-                    x_c = batch_feats[:, single_dim*2:]
-                    # 输出维度仍稳定为 VLM 的基石维度，能完美衔接下流未改变的 RQ-VAE 网络
-                    fused_out, _ = moe_model(x_t, x_i, x_c)
+                    
+                    if is_collab:
+                        x_c = batch_feats[:, single_dim*2:]
+                        fused_out, _ = moe_model(x_t, x_i, x_c)
+                    else:
+                        fused_out, _ = moe_model(x_t, x_i)
                     fused_list.append(fused_out.cpu().numpy())
             
             final_embeddings = np.concatenate(fused_list, axis=0) 
-            print("✅ 三模态(文本/图像/协同结构)专家解耦与门网络重构打分融合映射完成！")
-        # 🚀 激活动态学习域 (Contrastive Adapter 对比对齐层学习 🔥)
+            print("✅ 拥有复杂LLM特征模块的 MoE 解耦与门网络重构映射全部完美完成！")
+        # 🚀 激活动态学习域 (MoE_Decouple)
+        # if args.mode == "moe_decouple":
+        #     print(f"\n⚡ [机制启动] 开始对特征组进行 [{args.mode}] 策略专属 MoE 网学习与融合训练! ⚡")
+            
+        #     N, double_dim = final_embeddings.shape
+        #     single_dim = double_dim // 2
+            
+        #     moe_model = MoEDecoupler(input_dim=single_dim).to(accelerator.device)
+        #     # 1. 增加 weight_decay 增加正则化稳定性
+        #     optimizer = torch.optim.Adam(moe_model.parameters(), lr=1e-3, weight_decay=1e-5)
+            
+        #     # 2. 引入余弦退火学习率调度器，让训练后期平滑收敛
+        #     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.moe_epochs)
+            
+        #     dataset = torch.tensor(final_embeddings, dtype=torch.float32)
+        #     dataloader = torch.utils.data.DataLoader(dataset, batch_size=256, shuffle=True)
+            
+        #     moe_model.train()
+            
+        #     # 3. 增加最优状态追踪机制，确保只取最收敛的一次
+        #     best_loss = float('inf')
+        #     best_model_weights = None
+            
+        #     print(f"--> 执行 {args.moe_epochs} epoch 正交独立学习...")
+        #     for epoch in range(args.moe_epochs):
+        #         total_loss = 0.0
+        #         for batch_idx, batch_feats in enumerate(dataloader):
+        #             batch_feats = batch_feats.to(accelerator.device)
+        #             x_t, x_i = batch_feats[:, :single_dim], batch_feats[:, single_dim:]
+                    
+        #             optimizer.zero_grad()
+        #             _, loss = moe_model(x_t, x_i)
+        #             loss.backward()
+                    
+        #             # 4. 增加梯度裁剪，防止最后两代突然因为正交惩罚发生梯度爆炸导致的Loss飙升
+        #             torch.nn.utils.clip_grad_norm_(moe_model.parameters(), max_norm=1.0)
+                    
+        #             optimizer.step()
+        #             total_loss += loss.item()
+                
+        #         scheduler.step() # 学习率动态衰减
+                
+        #         avg_loss = total_loss / len(dataloader)
+                
+        #         # 记录 Best Loss 并在内存里保存模型状态
+        #         if avg_loss < best_loss:
+        #             best_loss = avg_loss
+        #             best_model_weights = copy.deepcopy(moe_model.state_dict())
+
+        #         if (epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1:
+        #             current_lr = scheduler.get_last_lr()[0]
+        #             print(f"  [MoE] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {current_lr:.6f}")
+            
+        #     print(f"--> 训练结束，最佳平均 Loss 锁定为: {best_loss:.4f}")
+            
+        #     # 5. 回滚到历史最好的一代模型！！！再进行推理
+        #     moe_model.load_state_dict(best_model_weights)
+        #     moe_model.eval()
+            
+        #     print("--> 开始融合最终 Decouple 特征...")
+        #     fused_list = []
+        #     infer_loader = torch.utils.data.DataLoader(dataset, batch_size=512, shuffle=False)
+        #     with torch.no_grad():
+        #         for batch_feats in infer_loader:
+        #             batch_feats = batch_feats.to(accelerator.device)
+        #             x_t, x_i = batch_feats[:, :single_dim], batch_feats[:, single_dim:]
+        #             fused_out, _ = moe_model(x_t, x_i)
+        #             fused_list.append(fused_out.cpu().numpy())
+            
+        #     final_embeddings = np.concatenate(fused_list, axis=0)
+        #     print("✅ 专家解耦与门网络重构映射全部完成！")
+        # elif args.mode == "moe_collab":
+        #     print(f"\n⚡ [机制启动] 开始对特征组进行 [{args.mode}] 策略专属 MoE 混合网学习与融合训练! ⚡")
+            
+        #     # 从拼接好的 final_embeddings 中精准扒出不同模态的具体维度
+        #     N, total_dim = final_embeddings.shape
+        #     collab_dim = collab_embeddings.shape[1]
+        #     single_dim = (total_dim - collab_dim) // 2  # 这是 VLM 输出的原生单文本/图像层维度(e.g., 3584)
+            
+        #     moe_model = MoECollabDecoupler(input_dim=single_dim, collab_dim=collab_dim).to(accelerator.device)
+        #     optimizer = torch.optim.Adam(moe_model.parameters(), lr=1e-3, weight_decay=1e-5)
+        #     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.moe_epochs)
+            
+        #     dataset = torch.tensor(final_embeddings, dtype=torch.float32)
+        #     dataloader = torch.utils.data.DataLoader(dataset, batch_size=256, shuffle=True)
+            
+        #     moe_model.train()
+        #     best_loss = float('inf')
+        #     best_model_weights = None
+            
+        #     print(f"--> 执行 {args.moe_epochs} epoch 的三通道协同解耦与信息重构学习...")
+        #     for epoch in range(args.moe_epochs):
+        #         total_loss = 0.0
+        #         for batch_idx, batch_feats in enumerate(dataloader):
+        #             batch_feats = batch_feats.to(accelerator.device)
+        #             # 强硬切分找回三者特征
+        #             x_t = batch_feats[:, :single_dim]
+        #             x_i = batch_feats[:, single_dim:single_dim*2]
+        #             x_c = batch_feats[:, single_dim*2:]
+                    
+        #             optimizer.zero_grad()
+        #             _, loss = moe_model(x_t, x_i, x_c)
+        #             loss.backward()
+                    
+        #             torch.nn.utils.clip_grad_norm_(moe_model.parameters(), max_norm=1.0)
+        #             optimizer.step()
+        #             total_loss += loss.item()
+                
+        #         scheduler.step()
+        #         avg_loss = total_loss / len(dataloader)
+        #         if avg_loss < best_loss:
+        #             best_loss = avg_loss
+        #             best_model_weights = copy.deepcopy(moe_model.state_dict())
+        #         if (epoch+1) % 5 == 0 or epoch == args.moe_epochs - 1:
+        #             current_lr = scheduler.get_last_lr()[0]
+        #             print(f"  [MoE_Collab] Epoch [{epoch+1}/{args.moe_epochs}], Loss: {avg_loss:.4f}, lr: {current_lr:.6f}")
+            
+        #     print(f"--> 训练结束，最佳平均 Loss 锁定为: {best_loss:.4f}")
+        #     moe_model.load_state_dict(best_model_weights)
+        #     moe_model.eval()
+            
+        #     print("--> 开始融合最终 Decouple 特征...")
+        #     fused_list = []
+        #     infer_loader = torch.utils.data.DataLoader(dataset, batch_size=512, shuffle=False)
+        #     with torch.no_grad():
+        #         for batch_feats in infer_loader:
+        #             batch_feats = batch_feats.to(accelerator.device)
+        #             x_t = batch_feats[:, :single_dim]
+        #             x_i = batch_feats[:, single_dim:single_dim*2]
+        #             x_c = batch_feats[:, single_dim*2:]
+        #             # 输出维度仍稳定为 VLM 的基石维度，能完美衔接下流未改变的 RQ-VAE 网络
+        #             fused_out, _ = moe_model(x_t, x_i, x_c)
+        #             fused_list.append(fused_out.cpu().numpy())
+            
+        #     final_embeddings = np.concatenate(fused_list, axis=0) 
+        #     print("✅ 三模态(文本/图像/协同结构)专家解耦与门网络重构打分融合映射完成！")
+        # # 🚀 激活动态学习域 (Contrastive Adapter 对比对齐层学习 🔥)
         elif args.mode == "contrastive_adapter":
             print(f"\n⚡ [机制启动] 开始执行 [{args.mode}] 策略轻量级对比学习 (InfoNCE) 对齐映射与融合! ⚡")
             N, double_dim = final_embeddings.shape

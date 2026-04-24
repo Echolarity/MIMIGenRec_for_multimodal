@@ -27,16 +27,13 @@ class EmbDataset(data.Dataset):
         print(
             f"Embeddings stats - min: {self.embeddings.min():.6f}, max: {self.embeddings.max():.6f}, mean: {self.embeddings.mean():.6f}"
         )
-        # 加速修改
-        # self.dim = self.embeddings.shape[-1]
-        self.embeddings = torch.from_numpy(self.embeddings).float()
-    # 加速修改
-    # def __getitem__(self, index):
-    #     emb = self.embeddings[index]
-    #     tensor_emb = torch.FloatTensor(emb)
-    #     return tensor_emb
-    # ====== 修改：不再转格式，直接切片返回 ======
+
+        self.dim = self.embeddings.shape[-1]
+
     def __getitem__(self, index):
-        return self.embeddings[index]
+        emb = self.embeddings[index]
+        tensor_emb = torch.FloatTensor(emb)
+        return tensor_emb
+
     def __len__(self):
         return len(self.embeddings)
